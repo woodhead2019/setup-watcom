@@ -1,0 +1,55 @@
+name: Project Date Backfill
+on:
+  workflow_dispatch:
+
+env:
+  GH_TOKEN: ${{ secrets.GLOBAL_PROJECT_TOKEN }}
+  PROJECT_NUMBER: 1
+  PROJECT_ID: "PVT_kwHOAB7H7M4BZk7B"
+  UPDATEAT_FIELD_ID: "PVTF_lAHOAB7H7M4BZk7BzhUmsLs"
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Process All Project Items
+        run: |
+          echo "📥 Fetching ALL items from project (bypassing 100 limit)..."
+          
+          # ÚPRAVA: --limit 50000 zapne automatické stránkování na pozadí GitHub CLI
+          ITEMS=$(gh project item-list "${{ env.PROJECT_NUMBER }}" --owner "@me" --format json --limit 50000)
+          
+          LENGTH=$(echo "$ITEMS" | jq '.items | length')
+          echo "Found a total of $LENGTH items to process."
+
+          # Bezpečné procházení bez rizika přerušení roury
+          for ((i=0; i<LENGTH; i++)); do
+              ITEM=$(echo "$ITEMS" | jq -c ".items[$i]")
+              ITEM_ID=$(echo "$ITEM" | jq -r '.id')
+              CONTENT_TYPE=$(echo "$ITEM" | jq -r '.content.type')
+              URL=$(echo "$ITEM" | jq -r '.content.url')
+
+              if [ "$CONTENT_TYPE" = "Issue" ] || [ "$CONTENT_TYPE" = "PullRequest" ]; then
+                  echo "[$((i+1))/$LENGTH] Processing [$CONTENT_TYPE]: $URL"
+                  
+                  # Dynamické sestavení API cesty podle typu položky
+                  if [ "$CONTENT_TYPE" = "PullRequest" ]; then
+                      API_PATH=$(echo "$URL" | sed 's|https://github.com/|repos/|' | sed 's|/pull/|/pulls/|')
+                  else
+                      API_PATH=$(echo "$URL" | sed 's|https://github.com/|repos/|')
+                  fi
+
+                  # Bezpečné zavolání API
+                  RAW_TIME=$(gh api "$API_PATH" --jq '.updated_at' 2>/dev/null || echo "null")
+                  
+                  if [ -n "$RAW_TIME" ] && [ "$RAW_TIME" != "null" ]; then
+                      ISO_STRING=$(date -d "$RAW_TIME" +"%Y-%m-%d %H:%M")
+                      echo "   ↳ Setting time to: $ISO_STRING"
+                      
+                      gh project item-edit --id "$ITEM_ID" --project-id "${{ env.PROJECT_ID }}" --field-id "${{ env.UPDATEAT_FIELD_ID }}" --text "$ISO_STRING" > /dev/null
+                  else
+                      echo "   ⚠️ Could not fetch updated_at from API path: $API_PATH"
+                  fi
+              fi
+          done
+          echo "✅ All items processed successfully!"
