@@ -67,7 +67,7 @@ jobs:
           echo "📦 Source repository name: $REPO_NAME"
           
           # Condition to assign a static option ID based on the repository name
-          REPOMARK_OPTION_ID="5f088986"
+          REPOMARK_OPTION_ID="0b0ebbc0"
 
           # 7. Write the selected option value to the RepoMark field
           echo "Updating RepoMark field..."
